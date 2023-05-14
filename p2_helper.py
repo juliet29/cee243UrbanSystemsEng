@@ -170,7 +170,7 @@ class Model():
 
 
     def run_sim(self, time_steps=10):
-        print(f"pollution lim = {self.pollution_lim}")
+        # print(f"pollution lim = {self.pollution_lim}")
         # initialize simulation with a given number of time_steps 
         self.init_sim(time_steps)
 
