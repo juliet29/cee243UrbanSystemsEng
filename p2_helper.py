@@ -120,9 +120,10 @@ class Model():
 
         # ! ----------  inflows ---------- 
         # pollution, increases as coal is depleted, 
-        # TODO check - but no more once coal finished?
         coal_change = np.abs(stocks["coal"][t] - stocks["coal"][t-1])
         coal_init = stocks["coal"][0]
+
+        # if coal is depleted, then no more pollution inflows with pollution limit consideration 
         if self.pollution_lim:
             inflows["pollution"][t] = inflows["pollution"][t-1]**(1 + coal_change/coal_init) if stocks["coal"][t] > 0 else 0 
         else: 
@@ -135,17 +136,14 @@ class Model():
         inflows["coal"][t] = 0
 
         # solar -> renwable resource dependent on number of buildings 
+        # limit on density : stocks["buildings"][t] < min_buildings 
         min_buildings = 3 * stocks["buildings"][0] 
-        # limit on density : stocks["buildings"][t] < min_buildings ~ 
-        building_dif = stocks["buildings"][t] - min_buildings # < 0 
-        
+        building_dif = stocks["buildings"][t] - min_buildings # < 0   
+        # different conditions based on density 
         increasing_inflow = inflows["solar"][t-1] + constants["dels+"]* (building_change) 
         decreasing_inflow = inflows["solar"][t-1] * (1 - ( building_dif/min_buildings)) if stocks["solar"][t] > 0 else 0
-        # print(f" solar increasing? {building_dif < 0 }, decreaing inflow = {decreasing_inflow}")
         # have increasing inflows of solar unless buildings are too dense 
         inflows["solar"][t] = increasing_inflow if building_dif < 0 else decreasing_inflow
-
-        # TODO if solar goes to 0, inflow should also? 
 
 
         # ! ----------  outflows ---------- 
@@ -156,14 +154,12 @@ class Model():
         out_coal_t =  outflows["coal"][t-1] + constants["delc-"]*(building_change) 
         outflows["coal"][t] =  out_coal_t if stocks["coal"][t] > 0 else 0
 
+        outflows["solar"][t] = outflows["solar"][t-1] + building_change * constants["dels-"] if stocks["solar"][t] > 0 else 0
+
         if self.sensitivity:
             # if run out of coal, and we have sufficient solar resource, then use 2x rate of solar resouce 
-            if stocks["coal"][t] <= 0 and stocks["solar"][t] > 0:
-                outflows["solar"][t] = outflows["solar"][t-1] + building_change * 2 * constants["dels-"] 
-            elif stocks["coal"][t] <= 0 and stocks["solar"][t] <= 0:
-                outflows["solar"][t] = 0 # TODO check this 
-
-        outflows["solar"][t] = outflows["solar"][t-1] + building_change * constants["dels-"] 
+            if stocks["coal"][t] <= 0:
+                outflows["solar"][t] = outflows["solar"][t-1] + building_change * 2 * constants["dels-"] if stocks["solar"][t] > 0 else 0
 
 
         self.inflows = inflows
