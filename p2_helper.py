@@ -200,7 +200,7 @@ class Model():
                 fig.add_trace(go.Scatter(
                     x=self.time,
                     y=df[col], 
-                    mode='lines+markers',
+                    mode='lines',
                     marker_color=colors[cnt],
                     name=col,
                     showlegend=show_legend_bool,
