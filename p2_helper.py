@@ -9,7 +9,7 @@ import plotly.express as px
 
 
 class Model():
-    def __init__(self):
+    def __init__(self, pollution_lim=False, sensitivity=False):
         self.constants = {
             # initial values 
             "p0": 100, # pollution 
@@ -34,6 +34,8 @@ class Model():
             "es0": 500,
             "r0": 1500, 
         }
+        self.pollution_lim = pollution_lim
+        self.sensitivity = sensitivity
 
 
     def init_sim(self,time_steps=10):
@@ -96,7 +98,7 @@ class Model():
         return 
 
 
-    def step_sim(self, t=1, sensitivity=False):
+    def step_sim(self, t=1):
         stocks = self.stocks
         inflows = self.inflows
         outflows = self.outflows
@@ -117,21 +119,31 @@ class Model():
         building_change = stocks["buildings"][t] - stocks["buildings"][t-1]
 
         # ! ----------  inflows ---------- 
-        # pollution 
+        # pollution, increases as coal is depleted, 
+        # TODO check - but no more once coal finished?
         coal_change = np.abs(stocks["coal"][t] - stocks["coal"][t-1])
         coal_init = stocks["coal"][0]
-        inflows["pollution"][t] = inflows["pollution"][t-1]**(1 + coal_change/coal_init)
+        if self.pollution_lim:
+            inflows["pollution"][t] = inflows["pollution"][t-1]**(1 + coal_change/coal_init) if stocks["coal"][t] > 0 else 0 
+        else: 
+            inflows["pollution"][t] = inflows["pollution"][t-1]**(1 + coal_change/coal_init) 
 
-        # buildings and coal 
-        inflows["buildings"][t] = stocks["buildings"][t] * constants["delb+"] # TODO where is the pollution if statement?
+        # buildings
+        inflows["buildings"][t] = stocks["buildings"][t] * constants["delb+"] if stocks["pollution"][t] < constants["ap"] else 0 
+
+        # coal -> non-renewable resource, so no inflows 
         inflows["coal"][t] = 0
 
-        # solar 
-        min_buildings = 3 * stocks["buildings"][0]  #TODO make 3  a constant?
-        in_solar_val = stocks["buildings"][t] - min_buildings # < 0 -> original: stocks["buildings"][t] < min_buildings 
-        in_solar_t = constants["dels+"] * (building_change) + inflows["solar"][t-1]
-        in_solar_f = inflows["solar"][t-1] * (1 - (in_solar_val/min_buildings))
-        inflows["solar"][t] = in_solar_t if in_solar_val  < 0 else in_solar_f
+        # solar -> renwable resource dependent on number of buildings 
+        min_buildings = 3 * stocks["buildings"][0] 
+        # limit on density : stocks["buildings"][t] < min_buildings ~ 
+        building_dif = stocks["buildings"][t] - min_buildings # < 0 
+        
+        increasing_inflow = inflows["solar"][t-1] + constants["dels+"]* (building_change) 
+        decreasing_inflow = inflows["solar"][t-1] * (1 - ( building_dif/min_buildings)) if stocks["solar"][t] > 0 else 0
+        # print(f" solar increasing? {building_dif < 0 }, decreaing inflow = {decreasing_inflow}")
+        # have increasing inflows of solar unless buildings are too dense 
+        inflows["solar"][t] = increasing_inflow if building_dif < 0 else decreasing_inflow
 
         # TODO if solar goes to 0, inflow should also? 
 
@@ -144,9 +156,12 @@ class Model():
         out_coal_t =  outflows["coal"][t-1] + constants["delc-"]*(building_change) 
         outflows["coal"][t] =  out_coal_t if stocks["coal"][t] > 0 else 0
 
-        if sensitivity:
-            ...
-
+        if self.sensitivity:
+            # if run out of coal, and we have sufficient solar resource, then use 2x rate of solar resouce 
+            if stocks["coal"][t] <= 0 and stocks["solar"][t] > 0:
+                outflows["solar"][t] = outflows["solar"][t-1] + building_change * 2 * constants["dels-"] 
+            elif stocks["coal"][t] <= 0 and stocks["solar"][t] <= 0:
+                outflows["solar"][t] = 0 # TODO check this 
 
         outflows["solar"][t] = outflows["solar"][t-1] + building_change * constants["dels-"] 
 
@@ -159,6 +174,7 @@ class Model():
 
 
     def run_sim(self, time_steps=10):
+        print(f"pollution lim = {self.pollution_lim}")
         # initialize simulation with a given number of time_steps 
         self.init_sim(time_steps)
 
