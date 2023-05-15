@@ -14,7 +14,7 @@ class Model():
             # initial values 
             "p0": 100, # pollution 
             "b0": 500, # building
-            "c0": 2500, # coal 
+            "c0": 25_000, # coal 
             "s0": 5000, # solar 
             # inflow rates 
             "dels+": 0.3, # solar inflow 
@@ -79,7 +79,7 @@ class Model():
 
 
         # ! ----------  inflows ---------- 
-        inflows["pollution"][0] =  126 # 3000 when do this => constants["pi0"]*constants["c0"] # TODO check this, in excel, its coal_outflow(t=1), which doesnt make sense 
+        inflows["pollution"][0] =  0 # 3000 when do this => constants["pi0"]*constants["c0"] # TODO check this, in excel, its coal_outflow(t=1), which doesnt make sense # updated from celine 05/15 
         inflows["buildings"][0] = stocks["buildings"][0] * constants["delb+"]
         inflows["coal"][0] = 0
         inflows["solar"][0] = constants["r0"]
@@ -90,10 +90,15 @@ class Model():
         outflows["coal"][0] = constants["ec0"]
         outflows["solar"][0] =  constants["es0"]
 
+        #! ------ other ------
+        pollution_intensity = init 
+        pollution_intensity[0] = constants["pi0"]
+
         self.inflows = inflows
         self.outflows = outflows
         self.stocks = stocks 
         self.time = time 
+        self.pollution_intensity = pollution_intensity
 
         return 
 
@@ -102,7 +107,8 @@ class Model():
         stocks = self.stocks
         inflows = self.inflows
         outflows = self.outflows
-        constants=self.constants
+        constants = self.constants
+        pollution_intensity = self.pollution_intensity
         
         # ! ---------- stocks  ---------- 
         concerns = ["pollution", "buildings", "coal", "solar"] 
@@ -123,11 +129,15 @@ class Model():
         coal_change = np.abs(stocks["coal"][t] - stocks["coal"][t-1])
         coal_init = stocks["coal"][0]
 
-        # if coal is depleted, then no more pollution inflows with pollution limit consideration 
+        # pollition intensity dependent on coal use
+        pollution_intensity[t] = pollution_intensity[t - 1 ] ** (1 + coal_change/coal_init)
+
+        # pollution => pol. intensity * coal use 
         if self.pollution_lim:
-            inflows["pollution"][t] = inflows["pollution"][t-1]**(1 + coal_change/coal_init) if stocks["coal"][t] > 0 else 0 
+            # if coal is depleted, then no more pollution inflows with pollution limit consideration 
+            inflows["pollution"][t] = pollution_intensity[t-1] * outflows["coal"][t-1] if stocks["coal"][t] > 0 else 0 
         else: 
-            inflows["pollution"][t] = inflows["pollution"][t-1]**(1 + coal_change/coal_init) 
+            inflows["pollution"][t] = pollution_intensity[t-1] * outflows["coal"][t-1]
 
         # buildings
         inflows["buildings"][t] = stocks["buildings"][t] * constants["delb+"] if stocks["pollution"][t] < constants["ap"] else 0 
@@ -154,7 +164,7 @@ class Model():
         out_coal_t =  outflows["coal"][t-1] + constants["delc-"]*(building_change) 
         outflows["coal"][t] =  out_coal_t if stocks["coal"][t] > 0 else 0
 
-        outflows["solar"][t] = outflows["solar"][t-1] + building_change * constants["dels-"] if stocks["solar"][t] > 0 else 0
+        outflows["solar"][t] = outflows["solar"][t-1] + building_change * constants["dels-"] #if stocks["solar"][t] > 0 else 0
 
         if self.sensitivity:
             # if run out of coal, and we have sufficient solar resource, then use 2x rate of solar resouce 
